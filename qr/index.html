@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="pl">
+<!--
+  PRZEKIEROWYWACZ QR — do wklejenia w repo GitHub Pages jako:
+      moewballs.github.io/qr/index.html
+  Wtedy QR z generatora shortów koduje krótki adres `…/qr#<kampania>`,
+  a ta strona dokleja pełny referrer i przerzuca na Google Play.
+
+  PO CO POŚREDNIK: QR wdrukowany w opublikowany film jest niezmienny.
+  Gdy kiedyś zmieni się pakiet/sklep apki — poprawiasz TYLKO ten plik
+  i wszystkie stare QR-y znów działają. (Plus: krótki URL = mały QR +
+  atrybucja per-klip przez utm_campaign z hasha.)
+
+  Jak zmienić cel w razie awarii: podmień PKG poniżej i zacommituj.
+-->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Kula Zgadula — przenoszę do Google Play…</title>
+<!-- Fallback BEZ JS: po 1 s na Play z generycznym referrerem (traci tylko per-klip) -->
+<meta http-equiv="refresh" content="1;url=https://play.google.com/store/apps/details?id=com.moewballs.polski.quiz.znawcow.magii&referrer=utm_source%3Dyoutube%26utm_medium%3Dqr">
+<style>
+  html,body{height:100%;margin:0}
+  body{font-family:system-ui,Segoe UI,Arial,sans-serif;background:#0f1620;color:#e8e4d0;
+       display:flex;align-items:center;justify-content:center;text-align:center;padding:24px}
+  .box{max-width:420px}
+  h1{font-size:20px;color:#f0e6b8;font-weight:600;margin:0 0 8px}
+  p{opacity:.8;line-height:1.5}
+  a{color:#5affe6;font-weight:700;text-decoration:none;font-size:18px}
+</style>
+</head>
+<body>
+  <div class="box">
+    <h1>Kula Zgadula</h1>
+    <p>Przenoszę do Google Play…</p>
+    <p><a id="go" href="#">Kliknij tutaj, jeśli nie przekieruje →</a></p>
+  </div>
+<script>
+(function () {
+  var PKG = 'com.moewballs.polski.quiz.znawcow.magii';   // ← zmień tu w razie migracji apki
+  // kampania: z hasha (#nord_poczatek-q0) albo z ?c=… ; brak = generyczny
+  var code = (location.hash || '').replace(/^#/, '').trim();
+  if (!code) { var m = /[?&]c=([^&]+)/.exec(location.search); if (m) code = decodeURIComponent(m[1]); }
+  var ref = 'utm_source=youtube&utm_medium=qr' + (code ? ('&utm_campaign=' + code) : '');
+  var url = 'https://play.google.com/store/apps/details?id=' + PKG + '&referrer=' + encodeURIComponent(ref);
+  document.getElementById('go').href = url;
+  location.replace(url);   // replace = cofnięcie nie wraca na tę stronę
+})();
+</script>
+</body>
+</html>
