@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ciach v2 — cięcie arkuszy na przezroczyste PNG (+ dziury)</title>
+<style>
+  :root { --bg:#0d1119; --panel:#161c28; --line:#2b3548; --gold:#c9a86a; --teal:#78f0dc; --text:#e8e4d0; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui,Segoe UI,Arial,sans-serif; padding:20px; }
+  h1 { font-size:20px; margin:0 0 4px; color:#f0e6b8; }
+  .hint { font-size:12px; opacity:.6; margin-bottom:16px; }
+  .row { display:flex; flex-wrap:wrap; gap:20px; align-items:flex-start; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px;
+           flex:1 1 300px; min-width:0; max-width:520px; }
+  #drop { min-width:280px; min-height:150px; display:flex; align-items:center; justify-content:center; text-align:center;
+          border:2px dashed var(--line); border-radius:12px; cursor:pointer; padding:20px; transition:border-color .2s,background .2s; }
+  #drop.over { border-color:var(--teal); background:rgba(120,240,220,.06); }
+  #drop.has { min-height:auto; }
+  #drop img { max-width:240px; max-height:240px; border-radius:6px; display:block; }
+  label { display:block; font-size:12px; opacity:.75; margin:10px 0 3px; }
+  input[type=number], input[type=text] { width:100%; background:#0c1320; color:var(--text); border:1px solid var(--line);
+          border-radius:6px; padding:7px 9px; font-family:inherit; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; }
+  .checkline { display:flex; align-items:center; gap:8px; margin-top:12px; font-size:13px; }
+  button { font-family:inherit; cursor:pointer; border-radius:8px; padding:10px 16px; font-size:14px; border:1px solid var(--teal);
+           background:linear-gradient(180deg,#18283a,#0a101e); color:#f0e6b8; }
+  button:hover { box-shadow:0 0 12px rgba(120,240,220,.3); }
+  button:disabled { opacity:.4; cursor:default; box-shadow:none; }
+  .btnbar { margin-top:14px; display:flex; gap:8px; }
+  #out { margin-top:22px; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:14px; margin-top:10px; }
+  .tile { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:8px; text-align:center; }
+  /* szachownica pod przezroczystość */
+  .tile .cv { background-image:
+      linear-gradient(45deg,#333 25%,transparent 25%),linear-gradient(-45deg,#333 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,#333 75%),linear-gradient(-45deg,transparent 75%,#333 75%);
+    background-size:16px 16px; background-position:0 0,0 8px,8px -8px,-8px 0; border-radius:6px; }
+  .tile canvas { max-width:100%; height:auto; display:block; margin:0 auto; }
+  .tile .fn { font-size:11px; opacity:.7; margin:6px 0 4px; word-break:break-all; }
+  .tile a { display:inline-block; font-size:12px; color:var(--teal); text-decoration:none; border:1px solid var(--line);
+            border-radius:6px; padding:4px 10px; }
+  .tile a:hover { border-color:var(--teal); }
+  .info { font-size:12px; opacity:.7; margin-top:8px; }
+  .warn { color:#ffd76a; }
+  details.tips { margin-top:10px; font-size:12px; opacity:.75; }
+  details.tips summary { cursor:pointer; color:var(--gold); }
+  details.tips div { margin-top:6px; line-height:1.5; }
+  /* v2: przełącznik tła podglądu — kratka / białe / ciemne */
+  .segbar { display:flex; gap:6px; align-items:center; margin-top:14px; font-size:12px; flex-wrap:wrap; }
+  .segbar button { padding:5px 12px; font-size:12px; border-color:var(--line); }
+  .segbar button.on { border-color:var(--teal); box-shadow:0 0 8px rgba(120,240,220,.25); }
+  .tiles.bg-bialy .cv { background:#fff; }
+  .tiles.bg-ciemny .cv { background:#0f1620; }
+</style>
+</head>
+<body>
+  <h1>Ciach v2 — cięcie arkuszy na przezroczyste PNG</h1>
+  <div class="hint">Flood-fill tła od krawędzi + zostaw największy obiekt + siatka.
+    NOWE w v2: <b>dziury</b> — tło zamknięte W ŚRODKU obiektu (wnętrze zwoju kabli,
+    okna altanki, środek felgi) też jest wycinane. Działa lokalnie — nic nie wychodzi na zewnątrz.</div>
+
+  <div class="row">
+    <div class="panel">
+      <div id="drop">Przeciągnij tu arkusz PNG<br>albo kliknij i wybierz plik</div>
+      <input id="file" type="file" accept="image/*" hidden>
+      <div id="imginfo" class="info"></div>
+    </div>
+
+    <div class="panel" style="min-width:240px;">
+      <div class="grid2">
+        <div><label>Kolumny</label><input id="cols" type="number" min="1" value="3"></div>
+        <div><label>Wiersze</label><input id="rows" type="number" min="1" value="3"></div>
+        <div><label>Próg tła</label><input id="flood" type="number" min="1" value="12"></div>
+        <div><label>Margines</label><input id="margin" type="number" min="0" value="6"></div>
+      </div>
+      <label>Prefiks nazwy plików</label>
+      <input id="prefix" type="text" value="przedmiot">
+      <label class="checkline"><input id="largest" type="checkbox" checked> zostaw tylko największy obiekt w komórce</label>
+      <label class="checkline"><input id="holes" type="checkbox" checked> wytnij dziury (tło zamknięte w środku)</label>
+      <div class="grid2">
+        <div><label>Min. dziura (px²)</label><input id="minhole" type="number" min="1" value="40"></div>
+      </div>
+      <details class="tips"><summary>ℹ podpowiedzi</summary>
+        <div>Próg tła: 12 dla płaskiego tła; ~30–36 przy jaśniejszych panelach.<br>
+        „Min. dziura": obszar tła MNIEJSZY niż tyle px² zostaje — chroni drobne
+        ciemne detale (oczka, cienie) przed wycięciem.<br>
+        Pojedynczy obrazek z dziurami do naprawy: Kolumny=1, Wiersze=1.</div>
+      </details>
+      <div class="btnbar">
+        <button id="cut" disabled>✂ Potnij</button>
+        <button id="all" disabled>⬇ Pobierz wszystkie</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="out"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+let sheet = null; // {canvas, W, H}
+
+// ---------- wczytanie obrazka ----------
+const drop = $('drop'), fileInput = $('file');
+drop.addEventListener('click', () => fileInput.click());
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+
+function loadFile(file) {
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth; c.height = img.naturalHeight;
+    c.getContext('2d').drawImage(img, 0, 0);
+    sheet = { canvas: c, W: c.width, H: c.height };
+    drop.classList.add('has');
+    drop.innerHTML = '';
+    const prev = new Image(); prev.src = url; drop.appendChild(prev);
+    $('imginfo').textContent = `${c.width} × ${c.height} px`;
+    $('cut').disabled = false;
+    // domyślny prefiks z nazwy pliku
+    $('prefix').value = (file.name.replace(/\.[^.]+$/, '') || 'przedmiot').replace(/[^a-z0-9_-]+/gi, '-');
+  };
+  img.src = url;
+}
+
+// ---------- algorytm cięcia (port z quiz-harry/_tools/ciach.html + v2: dziury) ----------
+function smooth(t) { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); }
+function dist(a, b) { return Math.hypot(a[0]-b[0], a[1]-b[1], a[2]-b[2]); }
+
+function cutCell(data, W, qx, qy, cw, ch, floodD, margin, keepLargest, holes, minHole) {
+  const px = (x, y) => { const i = ((qy+y)*W + (qx+x))*4; return [data[i], data[i+1], data[i+2]]; };
+  const F0 = 6, F1 = Math.max(30, floodD + 8);
+
+  // kolor tła: średnia z 4 rogów
+  const corners = [[8,8],[cw-9,8],[8,ch-9],[cw-9,ch-9]].map(([x,y]) => px(x,y));
+  const bg = [0,1,2].map(k => corners.reduce((s,c) => s+c[k], 0)/4);
+
+  // flood-fill tła od krawędzi komórki
+  const flooded = new Uint8Array(cw*ch);
+  const stack = [];
+  const seed = (x, y) => { const k=y*cw+x; if(!flooded[k] && dist(px(x,y),bg)<floodD){ flooded[k]=1; stack.push(k);} };
+  for (let x=0;x<cw;x++){ seed(x,0); seed(x,ch-1); }
+  for (let y=0;y<ch;y++){ seed(0,y); seed(cw-1,y); }
+  while (stack.length){ const k=stack.pop(), x=k%cw, y=(k/cw)|0;
+    if(x>0)seed(x-1,y); if(x<cw-1)seed(x+1,y); if(y>0)seed(x,y-1); if(y<ch-1)seed(x,y+1); }
+
+  // v2: DZIURY — tło zamknięte w środku obiektu, dokąd flood od krawędzi nie
+  // dociera (wnętrze zwoju kabli, okna altanki, środek felgi). Szukamy spójnych
+  // obszarów w kolorze tła wśród NIEzalanych pikseli; obszar >= minHole px²
+  // staje się tłem. Mniejsze zostają — ochrona drobnych ciemnych detali
+  // obiektu, które przypadkiem mają kolor zbliżony do tła.
+  if (holes) {
+    const seen = new Uint8Array(cw*ch);
+    for (let s=0;s<cw*ch;s++){
+      if (flooded[s] || seen[s]) continue;
+      if (dist(px(s%cw,(s/cw)|0),bg) >= floodD) continue;
+      const q=[s], reg=[s]; seen[s]=1;
+      while (q.length){ const k=q.pop(), x=k%cw, y=(k/cw)|0;
+        for (const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+          const nx=x+dx, ny=y+dy;
+          if(nx<0||nx>=cw||ny<0||ny>=ch) continue;
+          const nk=ny*cw+nx;
+          if(flooded[nk]||seen[nk]) continue;
+          if(dist(px(nx,ny),bg) < floodD){ seen[nk]=1; q.push(nk); reg.push(nk); }
+        } }
+      if (reg.length >= minHole) for (const k of reg) flooded[k]=1;
+    }
+  }
+
+  // największy spójny obiekt (opcjonalnie)
+  let comp = null, keep = -1;
+  if (keepLargest) {
+    comp = new Int32Array(cw*ch).fill(-1);
+    const areas = [];
+    for (let s=0;s<cw*ch;s++){
+      if(flooded[s]||comp[s]>=0) continue;
+      const id=areas.length; let area=0; const q=[s]; comp[s]=id;
+      while(q.length){ const k=q.pop(); area++; const x=k%cw,y=(k/cw)|0;
+        for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){ const nx=x+dx,ny=y+dy;
+          if(nx<0||nx>=cw||ny<0||ny>=ch)continue; const nk=ny*cw+nx;
+          if(!flooded[nk]&&comp[nk]<0){comp[nk]=id;q.push(nk);} } }
+      areas.push(area);
+    }
+    keep = areas.indexOf(Math.max(...areas, 0));
+  }
+
+  // alfa + bbox
+  const alpha = new Float32Array(cw*ch);
+  let minX=cw,minY=ch,maxX=0,maxY=0;
+  for (let y=0;y<ch;y++) for (let x=0;x<cw;x++){
+    const k=y*cw+x;
+    if(flooded[k]) continue;
+    if(keepLargest && comp[k]!==keep) continue;
+    let nearBg=false;
+    for(let dy=-1;dy<=1&&!nearBg;dy++)for(let dx=-1;dx<=1&&!nearBg;dx++){
+      const nx=x+dx,ny=y+dy;
+      if(nx>=0&&nx<cw&&ny>=0&&ny<ch){ const nk=ny*cw+nx;
+        if(flooded[nk] || (keepLargest && comp[nk]>=0 && comp[nk]!==keep)) nearBg=true; }
+    }
+    alpha[k]= nearBg ? smooth((dist(px(x,y),bg)-F0)/(F1-F0)) : 1;
+    if(alpha[k]>0.15){ if(x<minX)minX=x; if(x>maxX)maxX=x; if(y<minY)minY=y; if(y>maxY)maxY=y; }
+  }
+  if (maxX<minX) return null; // pusta komórka
+  minX=Math.max(0,minX-margin); minY=Math.max(0,minY-margin);
+  maxX=Math.min(cw-1,maxX+margin); maxY=Math.min(ch-1,maxY+margin);
+
+  const ow=maxX-minX+1, oh=maxY-minY+1;
+  const out=document.createElement('canvas'); out.width=ow; out.height=oh;
+  const octx=out.getContext('2d'); const od=octx.createImageData(ow,oh);
+  for(let y=0;y<oh;y++)for(let x=0;x<ow;x++){
+    const sx=qx+minX+x, sy=qy+minY+y, si=(sy*W+sx)*4, o=(y*ow+x)*4;
+    od.data[o]=data[si]; od.data[o+1]=data[si+1]; od.data[o+2]=data[si+2];
+    od.data[o+3]=Math.round(alpha[(minY+y)*cw+minX+x]*255);
+  }
+  octx.putImageData(od,0,0);
+  return { canvas: out, w: ow, h: oh };
+}
+
+// ---------- obsługa UI ----------
+$('cut').addEventListener('click', () => {
+  if (!sheet) return;
+  const cols=Math.max(1,+$('cols').value), rows=Math.max(1,+$('rows').value);
+  const floodD=Math.max(1,+$('flood').value), margin=Math.max(0,+$('margin').value);
+  const keepLargest=$('largest').checked, prefix=$('prefix').value.trim()||'obraz';
+  const holes=$('holes').checked, minHole=Math.max(1,+$('minhole').value);
+  const { canvas:sc, W, H } = sheet;
+  const data = sc.getContext('2d').getImageData(0,0,W,H).data;
+  const cw=Math.floor(W/cols), ch=Math.floor(H/rows);
+
+  const tiles=[]; let n=0;
+  for (let r=0;r<rows;r++) for (let c=0;c<cols;c++){
+    n++;
+    const res = cutCell(data, W, c*cw, r*ch, cw, ch, floodD, margin, keepLargest, holes, minHole);
+    tiles.push({ name: `${prefix}-${n}.png`, res });
+  }
+  renderTiles(tiles);
+});
+
+let bgMode = ''; // tło podglądu: '' = kratka | 'bg-bialy' | 'bg-ciemny'
+function applyBg() {
+  const t = $('tiles'); if (!t) return;
+  t.className = 'tiles ' + bgMode;
+  document.querySelectorAll('.segbar [data-bg]')
+    .forEach(b => b.classList.toggle('on', b.dataset.bg === bgMode));
+}
+
+function renderTiles(tiles) {
+  const out = $('out');
+  out.innerHTML = `<div class="info">Pocięto na ${tiles.length} kafli. Kliknij „Pobierz" pod każdym albo „Pobierz wszystkie".</div>
+    <div class="segbar">Tło podglądu:
+      <button data-bg="">kratka</button>
+      <button data-bg="bg-bialy">białe</button>
+      <button data-bg="bg-ciemny">ciemne</button>
+    </div>
+    <div class="tiles" id="tiles"></div>`;
+  out.querySelectorAll('[data-bg]').forEach(b => b.onclick = () => { bgMode = b.dataset.bg; applyBg(); });
+  const wrap = $('tiles');
+  window._tiles = tiles;
+  tiles.forEach(t => {
+    const div = document.createElement('div'); div.className='tile';
+    const holder = document.createElement('div'); holder.className='cv';
+    if (t.res) {
+      holder.appendChild(t.res.canvas);
+      const a = document.createElement('a');
+      a.textContent='⬇ Pobierz'; a.download=t.name; a.href=t.res.canvas.toDataURL('image/png');
+      div.innerHTML = `<div class="fn">${t.name} · ${t.res.w}×${t.res.h}</div>`;
+      div.prepend(holder); div.appendChild(a);
+    } else {
+      div.innerHTML = `<div class="fn warn">${t.name}<br>(pusta komórka)</div>`;
+    }
+    wrap.appendChild(div);
+  });
+  applyBg();
+  $('all').disabled = false;
+}
+
+$('all').addEventListener('click', () => {
+  const tiles = (window._tiles||[]).filter(t => t.res);
+  tiles.forEach((t, i) => setTimeout(() => {
+    const a = document.createElement('a');
+    a.download = t.name; a.href = t.res.canvas.toDataURL('image/png');
+    document.body.appendChild(a); a.click(); a.remove();
+  }, i * 250));
+});
+</script>
+</body>
+</html>
